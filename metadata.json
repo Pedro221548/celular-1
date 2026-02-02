@@ -1,0 +1,8 @@
+{
+  "name": "ScreenMirror Link",
+  "description": "A high-performance screen mirroring solution using WebRTC. Generate a link, share it with an Android device, and view the screen in real-time without apps or cables.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
