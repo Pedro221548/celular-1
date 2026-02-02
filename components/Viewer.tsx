@@ -19,6 +19,7 @@ const Viewer: React.FC = () => {
     const init = async () => {
       try {
         setStatus(ConnectionStatus.CONNECTING);
+        setError(null);
         await socketService.connect();
         
         webrtcRef.current = new WebRTCService(roomId, 'viewer');
@@ -44,10 +45,10 @@ const Viewer: React.FC = () => {
         });
 
         socketService.send({ type: 'join', roomId, sender: 'viewer' });
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
         setStatus(ConnectionStatus.ERROR);
-        setError('Servidor inacessível. Verifique as configurações na Home.');
+        setError(err.message || 'Erro desconhecido ao conectar.');
       }
     };
 
@@ -86,21 +87,30 @@ const Viewer: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">Conexão Falhou</h2>
-              <p className="text-slate-400 mb-6 max-w-sm">O frontend não conseguiu encontrar seu servidor de sinalização (backend).</p>
-              <button 
-                onClick={() => navigate('/')} 
-                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all"
-              >
-                Configurar URL do Servidor
-              </button>
+              <h2 className="text-xl font-bold text-white mb-2">Conexão Impossível</h2>
+              <p className="text-slate-400 mb-6 max-w-sm">{error}</p>
+              
+              <div className="flex flex-col gap-3 w-full max-w-xs">
+                <button 
+                  onClick={() => navigate('/')} 
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all"
+                >
+                  Configurar URL do Backend
+                </button>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="text-slate-500 hover:text-white text-xs underline"
+                >
+                  Tentar reconectar
+                </button>
+              </div>
             </div>
           )}
 
           {status === ConnectionStatus.CONNECTING && (
             <div className="animate-pulse flex flex-col items-center">
               <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-slate-400">Conectando ao sinalizador...</p>
+              <p className="text-slate-400">Verificando sinalizador...</p>
             </div>
           )}
           

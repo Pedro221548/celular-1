@@ -7,71 +7,82 @@ class SocketService {
   private socket: WebSocket | null = null;
   private handlers: MessageHandler[] = [];
   
+  public getConfiguredUrl(): string | null {
+    return localStorage.getItem('mirrorlink_signaling_url');
+  }
+
   private getUrl(): string {
-    // 1. Tenta pegar do localStorage
-    const savedUrl = localStorage.getItem('mirrorlink_signaling_url');
+    const savedUrl = this.getConfiguredUrl();
     if (savedUrl) return savedUrl;
 
-    // 2. Fallback padrão para desenvolvimento local
+    // Se estiver no Vercel (geralmente .vercel.app ou custom domain)
+    // e não houver URL configurada, ele tentará a mesma origem, o que falhará.
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const hostname = window.location.hostname || 'localhost';
-    const isLocal = /localhost|127\.0\.0\.1|192\.168\.|10\.|172\./.test(hostname);
+    const hostname = window.location.hostname;
     
-    if (isLocal && window.location.port !== '3001') {
-      return `${protocol}://${hostname}:3001`;
+    if (hostname.includes('vercel.app') || hostname.includes('localhost') === false) {
+      // Retorna algo que force o erro explicativo se não configurado
+      return `${protocol}://${hostname}/ws-not-supported-on-vercel`;
     }
-    return `${protocol}://${window.location.host}`;
+
+    return `ws://localhost:3001`;
   }
 
   connect(): Promise<void> {
     const url = this.getUrl();
     return new Promise((resolve, reject) => {
-      if (this.socket?.readyState === WebSocket.OPEN) return resolve();
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        return resolve();
+      }
 
       try {
-        console.log('[MirrorLink] Conectando ao sinalizador:', url);
-        this.socket = new WebSocket(url);
+        const ws = new WebSocket(url);
+        this.socket = ws;
         
         const timeout = setTimeout(() => {
-          if (this.socket?.readyState !== WebSocket.OPEN) {
-            this.socket?.close();
-            reject(new Error('Tempo de conexão esgotado'));
+          if (ws.readyState !== WebSocket.OPEN) {
+            ws.close();
+            reject(new Error('TIMEOUT: O servidor remoto não respondeu.'));
           }
-        }, 5000);
+        }, 4000);
 
-        this.socket.onopen = () => {
+        ws.onopen = () => {
           clearTimeout(timeout);
-          console.log('[MirrorLink] Conectado com sucesso');
           resolve();
         };
 
-        this.socket.onmessage = (event) => {
+        ws.onmessage = (event) => {
           try {
             const msg: SignalingMessage = JSON.parse(event.data);
             this.handlers.forEach(handler => handler(msg));
-          } catch (e) {
-            console.error('[MirrorLink] Erro no parse:', e);
-          }
+          } catch (e) {}
         };
 
-        this.socket.onclose = () => {
-          this.socket = null;
-        };
-
-        this.socket.onerror = (err) => {
+        ws.onerror = () => {
           clearTimeout(timeout);
-          this.socket = null;
-          reject(new Error('Servidor de sinalização inacessível'));
+          const isVercel = window.location.hostname.includes('vercel.app');
+          const hasCustomUrl = !!this.getConfiguredUrl();
+
+          let msg = 'Servidor de sinalização inacessível.';
+          if (isVercel && !hasCustomUrl) {
+            msg = 'Vercel detectado: Você precisa configurar um servidor Node.js externo (Railway/Render) para o sinalizador.';
+          }
+          reject(new Error(msg));
         };
-      } catch (e) {
+
+        ws.onclose = () => {
+          if (this.socket === ws) this.socket = null;
+        };
+      } catch (e: any) {
         reject(e);
       }
     });
   }
 
   send(message: SignalingMessage) {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(message));
+    const currentSocket = this.socket;
+    if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+      currentSocket.send(JSON.stringify(message));
     }
   }
 
@@ -83,8 +94,10 @@ class SocketService {
   }
 
   disconnect() {
-    this.socket?.close();
-    this.socket = null;
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
   }
 }
 
