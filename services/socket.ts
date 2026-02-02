@@ -6,42 +6,42 @@ type MessageHandler = (msg: SignalingMessage) => void;
 class SocketService {
   private socket: WebSocket | null = null;
   private handlers: MessageHandler[] = [];
-  private url: string;
+  
+  private getUrl(): string {
+    // 1. Tenta pegar do localStorage
+    const savedUrl = localStorage.getItem('mirrorlink_signaling_url');
+    if (savedUrl) return savedUrl;
 
-  constructor() {
+    // 2. Fallback padrão para desenvolvimento local
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const hostname = window.location.hostname || 'localhost';
-    
-    // If running on localhost or a local IP, assume backend is on 3001.
-    // Otherwise, assume the signaling server is on the same host/port.
     const isLocal = /localhost|127\.0\.0\.1|192\.168\.|10\.|172\./.test(hostname);
     
     if (isLocal && window.location.port !== '3001') {
-      this.url = `${protocol}://${hostname}:3001`;
-    } else {
-      this.url = `${protocol}://${window.location.host}`;
+      return `${protocol}://${hostname}:3001`;
     }
-    
-    console.log('[MirrorLink] Signaling URL:', this.url);
+    return `${protocol}://${window.location.host}`;
   }
 
   connect(): Promise<void> {
+    const url = this.getUrl();
     return new Promise((resolve, reject) => {
       if (this.socket?.readyState === WebSocket.OPEN) return resolve();
 
       try {
-        this.socket = new WebSocket(this.url);
+        console.log('[MirrorLink] Conectando ao sinalizador:', url);
+        this.socket = new WebSocket(url);
         
         const timeout = setTimeout(() => {
           if (this.socket?.readyState !== WebSocket.OPEN) {
             this.socket?.close();
-            reject(new Error('Connection timed out'));
+            reject(new Error('Tempo de conexão esgotado'));
           }
         }, 5000);
 
         this.socket.onopen = () => {
           clearTimeout(timeout);
-          console.log('[MirrorLink] Connected to signaling server');
+          console.log('[MirrorLink] Conectado com sucesso');
           resolve();
         };
 
@@ -50,7 +50,7 @@ class SocketService {
             const msg: SignalingMessage = JSON.parse(event.data);
             this.handlers.forEach(handler => handler(msg));
           } catch (e) {
-            console.error('[MirrorLink] Message parse error:', e);
+            console.error('[MirrorLink] Erro no parse:', e);
           }
         };
 
@@ -60,9 +60,8 @@ class SocketService {
 
         this.socket.onerror = (err) => {
           clearTimeout(timeout);
-          console.error('[MirrorLink] WebSocket Error:', err);
           this.socket = null;
-          reject(new Error('Signaling server unreachable'));
+          reject(new Error('Servidor de sinalização inacessível'));
         };
       } catch (e) {
         reject(e);
